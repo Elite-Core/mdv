@@ -40,7 +40,7 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
         if home { w.title = "mdv"; w.isReleasedWhenClosed = false }
         w.center()
         shouldCascadeWindows = true
-        windowFrameAutosaveName = "mdv.document"
+        windowFrameAutosaveName = "mdv.document.2"
 
         let side = NSSplitViewItem(sidebarWithViewController: sidebar)
         side.minimumThickness = 200
@@ -51,7 +51,7 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
         split.addSplitViewItem(side)
         split.addSplitViewItem(main)
         side.isCollapsed = false
-        split.splitView.autosaveName = "mdv.sidebar"
+        split.splitView.autosaveName = "mdv.sidebar.2"
         w.contentViewController = split
         if sidebar.view.frame.width < 200 { split.splitView.setPosition(240, ofDividerAt: 0) }
 

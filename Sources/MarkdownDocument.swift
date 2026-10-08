@@ -21,7 +21,7 @@ final class MarkdownDocument: NSDocument {
 
     override func makeWindowControllers() {
         addWindowController(DocWindowController())
-        HomeWindowController.shared.hide()
+        DocWindowController.home.hide()
         watch = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in self?.checkForChanges() }
     }
 
@@ -39,6 +39,6 @@ final class MarkdownDocument: NSDocument {
     override func close() {
         watch?.invalidate(); watch = nil
         super.close()
-        if !AppDelegate.quitting && NSDocumentController.shared.documents.isEmpty { HomeWindowController.shared.show() }
+        if !AppDelegate.quitting && NSDocumentController.shared.documents.isEmpty { DocWindowController.home.show() }
     }
 }

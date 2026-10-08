@@ -91,7 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { true }
     func applicationOpenUntitledFile(_ sender: NSApplication) -> Bool {
-        HomeWindowController.shared.show()
+        DocWindowController.home.show()
         return true
     }
     static var quitting = false
@@ -99,7 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         AppDelegate.quitting = true
         return .terminateNow
     }
-    @objc func showHome(_ sender: Any?) { HomeWindowController.shared.show() }
+    @objc func showHome(_ sender: Any?) { DocWindowController.home.show() }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     @objc func setAppearanceMenu(_ sender: NSMenuItem) {

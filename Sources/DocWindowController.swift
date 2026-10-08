@@ -31,6 +31,10 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
         static let appearance = NSToolbarItem.Identifier("mdv.appearance")
     }
 
+    /// The home window: a viewer with no document. Shown on launch with nothing to open and when the last document closes.
+    static let home = DocWindowController(home: true)
+    private(set) var isHome = false
+
     private var web: DropWebView!
     private var loaded = false
     private var pendingHash: String?
@@ -38,15 +42,17 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
     private var statusTimer: Timer?
     private var doc: MarkdownDocument? { document as? MarkdownDocument }
 
-    convenience init() {
+    convenience init(home: Bool = false) {
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1040, height: 800),
                          styleMask: [.titled, .closable, .miniaturizable, .resizable],
                          backing: .buffered, defer: false)
         self.init(window: w)
+        isHome = home
         w.delegate = self
         w.minSize = NSSize(width: 520, height: 360)
         w.toolbarStyle = .unified
-        w.tabbingMode = .preferred
+        w.tabbingMode = home ? .disallowed : .preferred
+        if home { w.title = "mdv"; w.isReleasedWhenClosed = false }
         w.center()
         shouldCascadeWindows = true
         windowFrameAutosaveName = "mdv.document"
@@ -58,7 +64,8 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
         web = DropWebView(frame: w.contentView!.bounds, configuration: cfg)
         web.autoresizingMask = [.width, .height]
         web.enableDrops()
-        web.onDrop = { HomeWindowController.open($0) }
+        web.onDrop = { DocWindowController.open($0) }
+        web.onDragState = { [weak self] on in self?.web.evaluateJavaScript("mdv.drag(\(on))", completionHandler: nil) }
         web.navigationDelegate = self
         web.allowsMagnification = true
         web.underPageBackgroundColor = .windowBackgroundColor
@@ -85,7 +92,39 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
         if let u = doc?.fileURL { window?.subtitle = prettyPath(u.deletingLastPathComponent().path) }
     }
 
-    func windowWillClose(_ n: Notification) { statusTimer?.invalidate(); statusTimer = nil }
+    func windowWillClose(_ n: Notification) { if !isHome { statusTimer?.invalidate(); statusTimer = nil } }
+
+    // MARK: - Home
+
+    func show() {
+        if loaded { renderHome() }
+        showWindow(nil)
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+    func hide() { window?.orderOut(nil) }
+
+    private func renderHome() {
+        guard loaded, isHome else { return }
+        var payload: [String: Any] = skillInfo()
+        if let s = UserDefaults.standard.object(forKey: "sidebar") as? Bool { payload["sidebar"] = s }
+        call("mdv.setHome", payload)
+        pushRecent()
+    }
+
+    private func skillInfo() -> [String: Any] {
+        let fm = FileManager.default
+        return ["claude": fm.fileExists(atPath: AppDelegate.claudeDir.path),
+                "skill": fm.fileExists(atPath: AppDelegate.skillDest.path)]
+    }
+
+    static func open(_ urls: [URL]) {
+        for u in urls {
+            NSDocumentController.shared.openDocument(withContentsOf: u, display: true) { _, _, e in
+                if let e { NSApp.presentError(e) }
+            }
+        }
+    }
 
     // MARK: - Rendering
 
@@ -100,6 +139,7 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
         ]
         if let s = UserDefaults.standard.object(forKey: "sidebar") as? Bool { payload["sidebar"] = s }
         if let h = pendingHash { payload["hash"] = h; pendingHash = nil }
+        payload.merge(skillInfo()) { a, _ in a }
         call("mdv.set", payload)
         pushRecent()
         updateStatus()
@@ -143,7 +183,10 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
 
     // MARK: - WKNavigationDelegate
 
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { loaded = true; render() }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        loaded = true
+        if isHome { renderHome() } else { render() }
+    }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
@@ -169,6 +212,11 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
             }
         case "sidebar":
             if let v = b["visible"] as? Bool { UserDefaults.standard.set(v, forKey: "sidebar") }
+        case "pick": NSDocumentController.shared.openDocument(nil)
+        case "skill":
+            (NSApp.delegate as? AppDelegate)?.installSkillMenu(nil)
+            call("mdv.setSkill", skillInfo())
+        case "updates": Updater.shared.checkNow()
         case "find":
             guard let q = b["q"] as? String, !q.isEmpty else { return }
             let c = WKFindConfiguration()

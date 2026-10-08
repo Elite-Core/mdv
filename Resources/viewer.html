@@ -37,6 +37,10 @@ body:not(.nosb) main{margin-left:250px}
 .sec li a.sub{color:var(--muted)}
 .sec li a small{display:block;color:var(--faint);font-size:11px;margin-top:1px;font-weight:400}
 .sec .none{padding:4px 10px;font-size:13px;color:var(--faint)}
+.side-foot{margin-top:auto;padding:12px 10px 0;border-top:1px solid var(--border);font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.side-foot svg{width:14px;height:14px;stroke:#34c759;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.side-foot a{color:var(--accent);text-decoration:none}
+.side-foot a:hover{text-decoration:underline}
 @media (max-width:760px){
   aside{z-index:20;box-shadow:0 10px 40px var(--shadow)}
   body:not(.nosb) main{margin-left:0}
@@ -44,6 +48,14 @@ body:not(.nosb) main{margin-left:250px}
 
 /* ---------- content ---------- */
 main{min-width:0}
+#empty{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding-bottom:8vh;-webkit-user-select:none}
+#empty .doc{width:46px;height:46px;stroke:var(--faint);fill:none;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;margin-bottom:2px}
+#empty h2{margin:0;font-size:17px;font-weight:600;letter-spacing:-.01em}
+#empty button{font:inherit;font-size:13px;font-weight:600;color:#fff;background:var(--accent);border:0;border-radius:7px;padding:7px 16px;margin-top:4px}
+#empty button:hover{filter:brightness(1.08)}
+#empty p{margin:0;font-size:13px;color:var(--faint)}
+#drop{position:fixed;inset:10px;z-index:40;border:2px dashed var(--accent);border-radius:14px;background:color-mix(in srgb,var(--accent) 10%,transparent);display:none;place-items:center;font-size:15px;font-weight:600;color:var(--accent);pointer-events:none}
+body.drag #drop{display:grid}
 article{max-width:780px;margin:0 auto;padding:40px 48px 160px}
 @media (max-width:640px){article{padding:28px 20px 120px}}
 
@@ -97,10 +109,24 @@ article{max-width:780px;margin:0 auto;padding:40px 48px 160px}
 </head>
 <body class="nosb">
 <aside>
-  <section class="sec"><h4>Outline</h4><ul id="outline"><li class="none">—</li></ul></section>
+  <section class="sec" id="outline-sec"><h4>Outline</h4><ul id="outline"><li class="none">—</li></ul></section>
   <section class="sec"><h4>Recent</h4><ul id="recent"><li class="none">Nothing yet</li></ul></section>
+  <div class="side-foot" id="sidefoot" hidden>
+    <span id="skill-ok" hidden><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+    <span id="skill-ok-text" hidden>Claude Code skill installed</span>
+    <a href="#" id="skill-install" hidden>Install Claude Code skill</a>
+  </div>
 </aside>
-<main><article id="content" class="md"></article></main>
+<main>
+  <article id="content" class="md"></article>
+  <div id="empty" hidden>
+    <svg class="doc" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>
+    <h2>Open a markdown file</h2>
+    <button id="pick">Open File…</button>
+    <p>or drop one here</p>
+  </div>
+</main>
+<div id="drop">Drop to open</div>
 <div id="find" hidden>
   <input id="findq" type="text" placeholder="Find" spellcheck="false" autocomplete="off">
   <span class="n" id="findn"></span>
@@ -131,6 +157,8 @@ window.mdv = {
     cur = d;
     const y = scrollY;
     const art = $('#content');
+    art.hidden = false; $('#empty').hidden = true; $('#outline-sec').hidden = false;
+    setSkill(d);
     art.innerHTML = marked.parse(d.content || '');
     slugHeadings(art); fixAssets(art, d.dir);
     art.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
@@ -153,11 +181,30 @@ window.mdv = {
       li.appendChild(a); ul.appendChild(li);
     }
   },
+  setHome(d){
+    if (d.sidebar != null && sidebarPref == null) sidebarPref = d.sidebar;
+    applySidebar();
+    cur = null; headingEls = [];
+    const art = $('#content'); art.innerHTML = ''; art.hidden = true;
+    $('#empty').hidden = false; $('#outline-sec').hidden = true;
+    setSkill(d);
+  },
+  setSkill(d){ setSkill(d); },
+  drag(on){ document.body.classList.toggle('drag', !!on); },
   toggleSidebar(){ const hidden = document.body.classList.toggle('nosb'); sidebarPref = !hidden; post({ type: 'sidebar', visible: !hidden }); },
   jump(id){ const t = document.getElementById(id); if (t) { t.scrollIntoView({ block: 'start' }); } },
   find(){ const b = $('#find'); b.hidden = false; const q = $('#findq'); q.focus(); q.select(); },
   findResult(ok){ $('#find').classList.toggle('miss', !ok); $('#findn').textContent = ok ? '' : 'none'; }
 };
+
+function setSkill(d){
+  if (d.claude == null) return;
+  $('#sidefoot').hidden = !d.claude;
+  $('#skill-ok').hidden = $('#skill-ok-text').hidden = !d.skill;
+  $('#skill-install').hidden = !!d.skill;
+}
+$('#pick').onclick = () => post({ type: 'pick' });
+$('#skill-install').onclick = e => { e.preventDefault(); post({ type: 'skill' }); };
 
 // ---------- find ----------
 function doFind(back){ const q = $('#findq').value; if (!q) { mdv.findResult(true); return; } post({ type: 'find', q, backwards: !!back }); }

@@ -1,58 +1,36 @@
 import Cocoa
-import WebKit
-import UniformTypeIdentifiers
 
-/// Serves local files (images referenced by the markdown) to the web view as mdv:///abs/path.
-final class LocalFileSchemeHandler: NSObject, WKURLSchemeHandler {
-    func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
-        guard let url = task.request.url else { return }
-        let fileURL = URL(fileURLWithPath: url.path)
-        guard let data = try? Data(contentsOf: fileURL) else {
-            task.didFailWithError(NSError(domain: NSCocoaErrorDomain, code: NSFileReadNoSuchFileError)); return
-        }
-        let mime = UTType(filenameExtension: fileURL.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
-        task.didReceive(URLResponse(url: url, mimeType: mime, expectedContentLength: data.count, textEncodingName: nil))
-        task.didReceive(data)
-        task.didFinish()
-    }
-    func webView(_ webView: WKWebView, stop task: WKURLSchemeTask) {}
-}
-
-final class WeakScriptHandler: NSObject, WKScriptMessageHandler {
-    weak var target: WKScriptMessageHandler?
-    init(_ t: WKScriptMessageHandler) { target = t }
-    func userContentController(_ u: WKUserContentController, didReceive m: WKScriptMessage) { target?.userContentController(u, didReceive: m) }
-}
-
-final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate, NSToolbarItemValidation, WKNavigationDelegate, WKScriptMessageHandler {
-    private enum ID {
-        static let sidebar = NSToolbarItem.Identifier("mdv.sidebar")
-        static let open = NSToolbarItem.Identifier("mdv.open")
-        static let copy = NSToolbarItem.Identifier("mdv.copy")
-        static let status = NSToolbarItem.Identifier("mdv.status")
-        static let appearance = NSToolbarItem.Identifier("mdv.appearance")
-    }
-
+final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate, NSToolbarItemValidation, NSDraggingDestination {
     /// The home window: a viewer with no document. Shown on launch with nothing to open and when the last document closes.
     static let home = DocWindowController(home: true)
     private(set) var isHome = false
 
-    private var web: DropWebView!
-    private var loaded = false
-    private var pendingHash: String?
+    private enum ID {
+        static let status = NSToolbarItem.Identifier("mdv.status")
+        static let open = NSToolbarItem.Identifier("mdv.open")
+        static let copy = NSToolbarItem.Identifier("mdv.copy")
+        static let appearance = NSToolbarItem.Identifier("mdv.appearance")
+    }
+
+    let sidebar = SidebarViewController()
+    let reader = ReaderViewController()
+    private let split = NSSplitViewController()
     private let statusLabel = NSTextField(labelWithString: "")
     private var statusTimer: Timer?
+    private var pendingHash: String?
+    private var rendered = false
+    private var zoom: CGFloat = 1
     private var doc: MarkdownDocument? { document as? MarkdownDocument }
 
     convenience init(home: Bool) {
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1040, height: 800),
-                         styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                         styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                          backing: .buffered, defer: false)
         self.init(window: w)
         isHome = home
         NSLog("[mdv] DocWindowController init home=%d", home ? 1 : 0)
         w.delegate = self
-        w.minSize = NSSize(width: 520, height: 360)
+        w.minSize = NSSize(width: 560, height: 380)
         w.toolbarStyle = .unified
         w.tabbingMode = home ? .disallowed : .preferred
         w.isRestorable = false          // launch always lands on Home, never on last session's windows
@@ -61,22 +39,20 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
         shouldCascadeWindows = true
         windowFrameAutosaveName = "mdv.document"
 
-        let cfg = WKWebViewConfiguration()
-        cfg.setURLSchemeHandler(LocalFileSchemeHandler(), forURLScheme: "mdv")
-        cfg.userContentController.add(WeakScriptHandler(self), name: "mdv")
-        cfg.preferences.setValue(true, forKey: "developerExtrasEnabled")
-        web = DropWebView(frame: w.contentView!.bounds, configuration: cfg)
-        web.autoresizingMask = [.width, .height]
-        web.enableDrops()
-        web.onDrop = { DocWindowController.open($0) }
-        web.onDragState = { [weak self] on in self?.web.evaluateJavaScript("mdv.drag(\(on))", completionHandler: nil) }
-        web.navigationDelegate = self
-        web.allowsMagnification = true
-        web.underPageBackgroundColor = .windowBackgroundColor
-        w.contentView?.addSubview(web)
+        let side = NSSplitViewItem(sidebarWithViewController: sidebar)
+        side.minimumThickness = 200
+        side.maximumThickness = 340
+        side.canCollapse = true
+        let main = NSSplitViewItem(viewController: reader)
+        main.minimumThickness = 380
+        split.addSplitViewItem(side)
+        split.addSplitViewItem(main)
+        side.isCollapsed = false
+        split.splitView.autosaveName = "mdv.sidebar"
+        w.contentViewController = split
+        if sidebar.view.frame.width < 200 { split.splitView.setPosition(240, ofDividerAt: 0) }
 
-        statusLabel.font = .systemFont(ofSize: 11)
-        statusLabel.textColor = .secondaryLabelColor
+        w.registerForDraggedTypes([.fileURL])
 
         let tb = NSToolbar(identifier: "mdv.toolbar")
         tb.delegate = self
@@ -84,11 +60,23 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
         tb.allowsUserCustomization = false
         w.toolbar = tb
 
+        statusLabel.font = .systemFont(ofSize: 11)
+        statusLabel.textColor = .secondaryLabelColor
         statusTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in self?.updateStatus() }
 
-        if let html = Bundle.main.url(forResource: "viewer", withExtension: "html") {
-            web.loadFileURL(html, allowingReadAccessTo: html.deletingLastPathComponent())
+        sidebar.onJump = { [weak self] i in self?.reader.jump(toHeading: i) }
+        sidebar.onOpenRecent = { DocWindowController.open([URL(fileURLWithPath: $0)]) }
+        sidebar.onInstallSkill = { [weak self] in
+            (NSApp.delegate as? AppDelegate)?.installSkillMenu(nil)
+            self?.refreshSkill()
         }
+        reader.onHeadingChange = { [weak self] i in self?.sidebar.highlight(heading: i) }
+        reader.onOpenFile = { NSDocumentController.shared.openDocument(nil) }
+        reader.onOpenRelative = { [weak self] path, hash in self?.openRelative(path, hash: hash) }
+
+        if home { reader.showEmpty(true); sidebar.showHome() }
+        refreshSkill()
+        pushRecent()
     }
 
     override func synchronizeWindowTitleWithDocumentName() {
@@ -96,32 +84,26 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
         if let u = doc?.fileURL { window?.subtitle = prettyPath(u.deletingLastPathComponent().path) }
     }
 
+    override func showWindow(_ sender: Any?) {
+        if doc != nil && !rendered { render() }
+        super.showWindow(sender)
+        if doc != nil { NSLog("[mdv] render loaded=1 doc=1 winVisible=%d", (window?.isVisible ?? false) ? 1 : 0) }
+    }
+
     func windowWillClose(_ n: Notification) { if !isHome { statusTimer?.invalidate(); statusTimer = nil } }
 
     // MARK: - Home
 
     func show() {
-        NSLog("[mdv] home.show")
-        if loaded { renderHome() }
+        reader.showEmpty(true)
+        sidebar.showHome()
+        refreshSkill()
+        pushRecent()
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
-    func hide() { NSLog("[mdv] home.hide"); window?.orderOut(nil) }
-
-    private func renderHome() {
-        guard loaded, isHome else { return }
-        var payload: [String: Any] = skillInfo()
-        if let s = UserDefaults.standard.object(forKey: "sidebar") as? Bool { payload["sidebar"] = s }
-        call("mdv.setHome", payload)
-        pushRecent()
-    }
-
-    private func skillInfo() -> [String: Any] {
-        let fm = FileManager.default
-        return ["claude": fm.fileExists(atPath: AppDelegate.claudeDir.path),
-                "skill": fm.fileExists(atPath: AppDelegate.skillDest.path)]
-    }
+    func hide() { window?.orderOut(nil) }
 
     static func open(_ urls: [URL]) {
         for u in urls {
@@ -131,41 +113,41 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
         }
     }
 
+    private func openRelative(_ path: String, hash: String?) {
+        let u = URL(fileURLWithPath: path).standardizedFileURL
+        NSDocumentController.shared.openDocument(withContentsOf: u, display: true) { d, _, err in
+            if let err { NSApp.presentError(err); return }
+            if let hash, !hash.isEmpty { (d?.windowControllers.first as? DocWindowController)?.scroll(to: hash) }
+        }
+    }
+
     // MARK: - Rendering
 
     func render(changed: Bool = false) {
-        NSLog("[mdv] render loaded=%d doc=%d winVisible=%d", loaded ? 1 : 0, doc == nil ? 0 : 1, (window?.isVisible ?? false) ? 1 : 0)
-        guard loaded, let d = doc, let u = d.fileURL else { return }
-        var payload: [String: Any] = [
-            "name": u.lastPathComponent,
-            "dir": u.deletingLastPathComponent().path,
-            "content": d.text,
-            "mtime": d.mtime.timeIntervalSince1970 * 1000,
-            "changed": changed,
-        ]
-        if let s = UserDefaults.standard.object(forKey: "sidebar") as? Bool { payload["sidebar"] = s }
-        if let h = pendingHash { payload["hash"] = h; pendingHash = nil }
-        payload.merge(skillInfo()) { a, _ in a }
-        call("mdv.set", payload)
+        guard let d = doc, let u = d.fileURL else { return }
+        let outline = reader.render(markdown: d.text, baseURL: u.deletingLastPathComponent(), zoom: zoom, keepScroll: changed || rendered)
+        sidebar.setOutline(outline)
+        rendered = true
+        if let h = pendingHash { pendingHash = nil; reader.jump(toSlug: h) }
         pushRecent()
         updateStatus()
-    }
-
-    private func call(_ fn: String, _ arg: Any) {
-        guard let data = try? JSONSerialization.data(withJSONObject: arg, options: [.fragmentsAllowed]),
-              let json = String(data: data, encoding: .utf8) else { return }
-        web.evaluateJavaScript("\(fn)(\(json))", completionHandler: nil)
+        if changed { NSLog("[mdv] render loaded=1 doc=1 winVisible=%d", (window?.isVisible ?? false) ? 1 : 0) }
     }
 
     private func pushRecent() {
-        let list = NSDocumentController.shared.recentDocumentURLs.map {
-            ["path": $0.path, "name": $0.lastPathComponent, "dir": prettyPath($0.deletingLastPathComponent().path)]
-        }
-        call("mdv.setRecent", list)
+        sidebar.setRecent(NSDocumentController.shared.recentDocumentURLs.prefix(12).map {
+            RecentItem(path: $0.path, name: $0.lastPathComponent, dir: prettyPath($0.deletingLastPathComponent().path))
+        })
+    }
+
+    private func refreshSkill() {
+        let fm = FileManager.default
+        sidebar.setSkill(claudeInstalled: fm.fileExists(atPath: AppDelegate.claudeDir.path),
+                         skillInstalled: fm.fileExists(atPath: AppDelegate.skillDest.path))
     }
 
     private func updateStatus() {
-        guard let d = doc else { return }
+        guard let d = doc else { statusLabel.stringValue = ""; return }
         let s = NSMutableAttributedString(string: "● ", attributes: [
             .foregroundColor: NSColor.systemGreen, .font: NSFont.systemFont(ofSize: 8), .baselineOffset: 1.5])
         s.append(NSAttributedString(string: "updated \(ago(d.mtime))", attributes: [
@@ -184,66 +166,41 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
     }
 
     func scroll(to hash: String) {
-        if loaded { call("mdv.jump", hash) } else { pendingHash = hash }
+        if rendered { reader.jump(toSlug: hash) } else { pendingHash = hash }
     }
 
-    // MARK: - WKNavigationDelegate
+    // MARK: - Drops (the window forwards these from anywhere in its content)
 
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        loaded = true
-        NSLog("[mdv] web loaded home=%d visible=%d", isHome ? 1 : 0, (window?.isVisible ?? false) ? 1 : 0)
-        if isHome { renderHome() } else { render() }
+    private func markdownURLs(_ info: NSDraggingInfo) -> [URL] {
+        let opts: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
+        let all = (info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: opts) as? [URL]) ?? []
+        return all.filter { ["md", "markdown", "mdown", "mdx", "txt"].contains($0.pathExtension.lowercased()) }
     }
-
-    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
-                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        if navigationAction.navigationType == .linkActivated, let u = navigationAction.request.url {
-            NSWorkspace.shared.open(u)
-            decisionHandler(.cancel); return
-        }
-        decisionHandler(.allow)
+    func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        let ok = !markdownURLs(sender).isEmpty
+        reader.dropOverlay.isHidden = !ok
+        return ok ? .copy : []
     }
-
-    // MARK: - Messages from the page
-
-    func userContentController(_ ucc: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard let b = message.body as? [String: Any], let t = b["type"] as? String else { return }
-        switch t {
-        case "open":
-            guard let p = b["path"] as? String else { return }
-            let u = URL(fileURLWithPath: p).standardizedFileURL
-            let hash = b["hash"] as? String
-            NSDocumentController.shared.openDocument(withContentsOf: u, display: true) { d, _, err in
-                if let err = err { NSApp.presentError(err); return }
-                if let hash = hash, !hash.isEmpty { (d?.windowControllers.first as? DocWindowController)?.scroll(to: hash) }
-            }
-        case "sidebar":
-            if let v = b["visible"] as? Bool { UserDefaults.standard.set(v, forKey: "sidebar") }
-        case "pick": NSDocumentController.shared.openDocument(nil)
-        case "skill":
-            (NSApp.delegate as? AppDelegate)?.installSkillMenu(nil)
-            call("mdv.setSkill", skillInfo())
-        case "updates": Updater.shared.checkNow()
-        case "find":
-            guard let q = b["q"] as? String, !q.isEmpty else { return }
-            let c = WKFindConfiguration()
-            c.caseSensitive = false; c.wraps = true
-            c.backwards = (b["backwards"] as? Bool) ?? false
-            web.find(q, configuration: c) { [weak self] r in self?.call("mdv.findResult", r.matchFound) }
-        default: break
-        }
+    func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { markdownURLs(sender).isEmpty ? [] : .copy }
+    func draggingExited(_ sender: NSDraggingInfo?) { reader.dropOverlay.isHidden = true }
+    func draggingEnded(_ sender: NSDraggingInfo) { reader.dropOverlay.isHidden = true }
+    func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        reader.dropOverlay.isHidden = true
+        let urls = markdownURLs(sender)
+        guard !urls.isEmpty else { return false }
+        DocWindowController.open(urls)
+        return true
     }
 
     // MARK: - Toolbar
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, ID.status, .space, ID.open, ID.copy, .space, ID.sidebar, ID.appearance]
+        [.toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace, ID.status, .space, ID.open, ID.copy, .space, ID.appearance]
     }
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { toolbarDefaultItemIdentifiers(toolbar) }
 
     func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
         switch id {
-        case ID.sidebar: return symbolItem(id, "sidebar.left", "Toggle Sidebar", #selector(toggleOutline(_:)))
         case ID.open: return symbolItem(id, "folder", "Open File", #selector(openFile(_:)))
         case ID.copy: return symbolItem(id, "doc.on.doc", "Copy Markdown", #selector(copyMarkdown(_:)))
         case ID.appearance: return symbolItem(id, "circle.lefthalf.filled", "Light / Dark", #selector(toggleAppearance(_:)))
@@ -282,34 +239,29 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { [weak self] in self?.updateStatus() }
     }
 
-    @objc func toggleOutline(_ s: Any?) { web.evaluateJavaScript("mdv.toggleSidebar()", completionHandler: nil) }
-
     @objc func toggleAppearance(_ s: Any?) {
         let dark = window?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         AppDelegate.applyAppearance(dark ? "light" : "dark")
     }
 
-    @objc func reload(_ s: Any?) { doc?.reloadFromDisk(); render() }
+    @objc func reload(_ s: Any?) { doc?.reloadFromDisk(); render(changed: true) }
 
     @objc func revealInFinder(_ s: Any?) {
         if let u = doc?.fileURL { NSWorkspace.shared.activateFileViewerSelecting([u]) }
     }
 
     @objc func printDoc(_ s: Any?) {
+        guard let w = window, doc != nil else { return }
         let info = NSPrintInfo.shared
-        info.topMargin = 40; info.bottomMargin = 40; info.leftMargin = 40; info.rightMargin = 40
-        let op = web.printOperation(with: info)
-        op.view?.frame = NSRect(origin: .zero, size: info.paperSize)
+        info.topMargin = 48; info.bottomMargin = 48; info.leftMargin = 54; info.rightMargin = 54
+        info.horizontalPagination = .fit
+        info.verticalPagination = .automatic
+        let op = NSPrintOperation(view: reader.textView, printInfo: info)
         op.showsPrintPanel = true; op.showsProgressPanel = true
-        if let w = window { op.runModal(for: w, delegate: nil, didRun: nil, contextInfo: nil) }
+        op.runModal(for: w, delegate: nil, didRun: nil, contextInfo: nil)
     }
 
-    @objc func focusFind(_ s: Any?) {
-        window?.makeFirstResponder(web)
-        web.evaluateJavaScript("mdv.find()", completionHandler: nil)
-    }
-
-    @objc func zoomIn(_ s: Any?) { web.pageZoom = min(web.pageZoom + 0.1, 3) }
-    @objc func zoomOut(_ s: Any?) { web.pageZoom = max(web.pageZoom - 0.1, 0.5) }
-    @objc func actualSize(_ s: Any?) { web.pageZoom = 1 }
+    @objc func zoomIn(_ s: Any?) { zoom = min(zoom + 0.1, 2.2); render(changed: true) }
+    @objc func zoomOut(_ s: Any?) { zoom = max(zoom - 0.1, 0.7); render(changed: true) }
+    @objc func actualSize(_ s: Any?) { zoom = 1; render(changed: true) }
 }

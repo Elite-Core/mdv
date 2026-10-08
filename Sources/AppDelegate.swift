@@ -156,10 +156,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             mi(m, "Copy Markdown", #selector(DocWindowController.copyMarkdown(_:)), "c", [.command, .shift])
             mi(m, "Select All", #selector(NSText.selectAll(_:)), "a")
             m.addItem(.separator())
-            mi(m, "Find…", #selector(DocWindowController.focusFind(_:)), "f")
+            mi(m, "Find…", #selector(NSResponder.performTextFinderAction(_:)), "f").tag = NSTextFinder.Action.showFindInterface.rawValue
+            mi(m, "Find Next", #selector(NSResponder.performTextFinderAction(_:)), "g").tag = NSTextFinder.Action.nextMatch.rawValue
+            mi(m, "Find Previous", #selector(NSResponder.performTextFinderAction(_:)), "g", [.command, .shift]).tag = NSTextFinder.Action.previousMatch.rawValue
+            mi(m, "Use Selection for Find", #selector(NSResponder.performTextFinderAction(_:)), "e").tag = NSTextFinder.Action.setSearchString.rawValue
         }
         _ = add("View") { m in
-            mi(m, "Toggle Sidebar", #selector(DocWindowController.toggleOutline(_:)), "s", [.command, .control])
+            mi(m, "Toggle Sidebar", #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.command, .control])
             let appItem = mi(m, "Appearance", nil)
             let sub = NSMenu(title: "Appearance")
             for (t, v) in [("System", "system"), ("Light", "light"), ("Dark", "dark")] {

@@ -1,6 +1,6 @@
 # mdv
 
-A clean, native markdown viewer for the Mac. One window per file, tabs, live reload, no dependencies to install.
+A clean, fully native markdown viewer for the Mac. AppKit text rendering, no web view, no dependencies. One window per file, tabs, live reload.
 
 ## Open a file
 
@@ -14,7 +14,7 @@ A clean, native markdown viewer for the Mac. One window per file, tabs, live rel
 - **Outline** — every heading in the sidebar, highlighted as you scroll. Toggle with the toolbar button or ⌃⌘S.
 - **Recent** — your last files in the sidebar and in File → Open Recent.
 - **Tabs** — a second file opens as a tab in the same window.
-- **Find** — ⌘F, Enter for next, Shift-Enter for previous.
+- **Find** — ⌘F opens the standard macOS find bar.
 - **Light / dark** — follows the system; override from the toolbar or View → Appearance.
 - **Print** — ⌘P, sidebar drops out. Zoom with ⌘= / ⌘- / ⌘0.
 - Relative images render, and links to other `.md` files open in a new tab.
@@ -86,6 +86,6 @@ That builds, signs, notarizes, bumps the build number, tags, pushes, and publish
 ./build.sh
 ```
 
-Compiles `Sources/*.swift` with the Xcode toolchain, bundles `Resources/viewer.html`, draws the icon, and installs to `/Applications/mdv.app`. The markdown parser and code highlighter are bundled, so it works offline.
+Compiles `Sources/*.swift` with the Xcode toolchain, draws the icon, and installs to `/Applications/mdv.app`. Markdown is parsed by Foundation and styled into an AppKit text view (`MarkdownRenderer.swift`, `MarkdownLayoutManager.swift`); code is colored by a small native highlighter. Nothing is downloaded, nothing phones home except the update check.
 
 `mdv.mjs` is the older browser-pane version (`mdv --pane file.md`); it still works but the app is the main path.

@@ -25,10 +25,8 @@ done
 rm -rf build
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 xcrun swiftc -O -module-name mdv -target "$ARCH-apple-macos13.0" \
-  -framework Cocoa -framework WebKit -framework UniformTypeIdentifiers \
+  -framework Cocoa -framework UniformTypeIdentifiers \
   -o "$APP/Contents/MacOS/mdv" Sources/*.swift
-cp Resources/viewer.html "$APP/Contents/Resources/"
-cp -R Resources/vendor "$APP/Contents/Resources/vendor"
 cp -R Resources/skill "$APP/Contents/Resources/skill"
 cp Resources/Info.plist "$APP/Contents/"
 

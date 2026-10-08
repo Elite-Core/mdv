@@ -31,7 +31,7 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
         static let appearance = NSToolbarItem.Identifier("mdv.appearance")
     }
 
-    private var web: WKWebView!
+    private var web: DropWebView!
     private var loaded = false
     private var pendingHash: String?
     private let statusLabel = NSTextField(labelWithString: "")
@@ -55,8 +55,10 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
         cfg.setURLSchemeHandler(LocalFileSchemeHandler(), forURLScheme: "mdv")
         cfg.userContentController.add(WeakScriptHandler(self), name: "mdv")
         cfg.preferences.setValue(true, forKey: "developerExtrasEnabled")
-        web = WKWebView(frame: w.contentView!.bounds, configuration: cfg)
+        web = DropWebView(frame: w.contentView!.bounds, configuration: cfg)
         web.autoresizingMask = [.width, .height]
+        web.enableDrops()
+        web.onDrop = { HomeWindowController.open($0) }
         web.navigationDelegate = self
         web.allowsMagnification = true
         web.underPageBackgroundColor = .windowBackgroundColor

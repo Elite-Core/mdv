@@ -28,6 +28,7 @@ xcrun swiftc -O -module-name mdv -target "$ARCH-apple-macos13.0" \
   -framework Cocoa -framework WebKit -framework UniformTypeIdentifiers \
   -o "$APP/Contents/MacOS/mdv" Sources/*.swift
 cp Resources/viewer.html "$APP/Contents/Resources/"
+cp Resources/home.html "$APP/Contents/Resources/"
 cp -R Resources/vendor "$APP/Contents/Resources/vendor"
 cp -R Resources/skill "$APP/Contents/Resources/skill"
 cp Resources/Info.plist "$APP/Contents/"
@@ -41,6 +42,7 @@ $PB -c "Add :MDVReleasesPage string https://github.com/$RELEASES_REPO/releases/l
 
 xcrun swift Resources/icon.swift build/mdv.iconset
 iconutil -c icns build/mdv.iconset -o "$APP/Contents/Resources/mdv.icns"
+cp build/mdv.iconset/icon_128x128@2x.png "$APP/Contents/Resources/icon.png"
 
 # Sign with the Developer ID cert if one is in the keychain, else ad-hoc (local use only, no self-update).
 SIGN_ID=$(security find-identity -v -p codesigning 2>/dev/null | grep -m1 "Developer ID Application" | sed -E 's/.*"(.*)"/\1/')

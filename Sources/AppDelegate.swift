@@ -91,9 +91,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { true }
     func applicationOpenUntitledFile(_ sender: NSApplication) -> Bool {
-        NSDocumentController.shared.openDocument(nil)
+        HomeWindowController.shared.show()
         return true
     }
+    static var quitting = false
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        AppDelegate.quitting = true
+        return .terminateNow
+    }
+    @objc func showHome(_ sender: Any?) { HomeWindowController.shared.show() }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     @objc func setAppearanceMenu(_ sender: NSMenuItem) {
@@ -165,6 +171,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             mi(m, "Zoom Out", #selector(DocWindowController.zoomOut(_:)), "-")
         }
         let windowMenu = add("Window") { m in
+            let home = mi(m, "Home", #selector(showHome(_:)), "h", [.command, .shift]); home.target = self
+            m.addItem(.separator())
             mi(m, "Minimize", #selector(NSWindow.performMiniaturize(_:)), "m")
             mi(m, "Zoom", #selector(NSWindow.performZoom(_:)), "", [])
             m.addItem(.separator())

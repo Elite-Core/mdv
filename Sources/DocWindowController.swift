@@ -71,6 +71,7 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
 
         sidebar.onJump = { [weak self] i in self?.reader.jump(toHeading: i) }
         sidebar.onOpenRecent = { DocWindowController.open([URL(fileURLWithPath: $0)]) }
+        sidebar.onClearRecent = { AppDelegate.clearRecents() }
         sidebar.onInstallSkill = { [weak self] in
             (NSApp.delegate as? AppDelegate)?.installSkillMenu(nil)
             self?.refreshSkill()
@@ -139,10 +140,15 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
         if changed { NSLog("[mdv] render loaded=1 doc=1 winVisible=%d", (window?.isVisible ?? false) ? 1 : 0) }
     }
 
-    private func pushRecent() {
+    func pushRecent() {
         sidebar.setRecent(NSDocumentController.shared.recentDocumentURLs.prefix(12).map {
             RecentItem(path: $0.path, name: $0.lastPathComponent, dir: prettyPath($0.deletingLastPathComponent().path))
-        })
+        }, current: doc?.fileURL?.path)
+    }
+
+    /// Every open window's sidebar, after the recents list changes.
+    static func refreshAllRecents() {
+        for w in NSApp.windows { (w.windowController as? DocWindowController)?.pushRecent() }
     }
 
     private func refreshSkill() {

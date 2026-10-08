@@ -104,6 +104,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func showHome(_ sender: Any?) { DocWindowController.home.show() }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
+    static func clearRecents() {
+        NSDocumentController.shared.clearRecentDocuments(nil)
+        DocWindowController.refreshAllRecents()
+    }
+    @objc func clearRecentsMenu(_ sender: Any?) { AppDelegate.clearRecents() }
+
     @objc func setAppearanceMenu(_ sender: NSMenuItem) {
         AppDelegate.applyAppearance(sender.representedObject as? String ?? "system")
     }
@@ -143,7 +149,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             let recentItem = mi(m, "Open Recent", nil)
             let recent = NSMenu(title: "Open Recent")
             _ = recent.perform(NSSelectorFromString("_setMenuName:"), with: "NSRecentDocumentsMenu")
-            mi(recent, "Clear Menu", #selector(NSDocumentController.clearRecentDocuments(_:)))
+            let clear = mi(recent, "Clear Menu", #selector(clearRecentsMenu(_:))); clear.target = self
             recentItem.submenu = recent
             m.addItem(.separator())
             mi(m, "Close", #selector(NSWindow.performClose(_:)), "w")

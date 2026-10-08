@@ -23,8 +23,11 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     private var showOutline = true
     private var suppressSelection = false
 
+    private var currentPath: String?
+
     var onJump: ((Int) -> Void)?
     var onOpenRecent: ((String) -> Void)?
+    var onClearRecent: (() -> Void)?
     var onInstallSkill: (() -> Void)?
 
     override func loadView() {
@@ -104,7 +107,8 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
 
     func showHome() { showOutline = false; outlineGroup.children = []; reload() }
 
-    func setRecent(_ items: [RecentItem]) {
+    func setRecent(_ items: [RecentItem], current: String?) {
+        currentPath = current
         recentGroup.children = items.map { Row(.recent($0)) }
         reload()
     }
@@ -173,6 +177,15 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             tf.translatesAutoresizingMaskIntoConstraints = false
             cell.addSubview(tf); cell.textField = tf
             NSLayoutConstraint.activate([tf.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4), tf.centerYAnchor.constraint(equalTo: cell.centerYAnchor)])
+            if r === recentGroup, !recentGroup.children.isEmpty {
+                let clear = NSButton(title: "Clear", target: self, action: #selector(clearRecents(_:)))
+                clear.isBordered = false
+                clear.attributedTitle = NSAttributedString(string: "Clear", attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.tertiaryLabelColor])
+                clear.toolTip = "Clear recent files"
+                clear.translatesAutoresizingMaskIntoConstraints = false
+                cell.addSubview(clear)
+                NSLayoutConstraint.activate([clear.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -6), clear.centerYAnchor.constraint(equalTo: cell.centerYAnchor)])
+            }
             return cell
         case .heading(let depth, let e):
             let cell = NSTableCellView()
@@ -189,8 +202,14 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             return cell
         case .recent(let item):
             let cell = NSTableCellView()
+            let isCurrent = item.path == currentPath
+            let icon = NSImageView(image: NSImage(systemSymbolName: isCurrent ? "doc.text.fill" : "doc.text", accessibilityDescription: nil)!
+                .withSymbolConfiguration(.init(pointSize: 13, weight: .regular))!)
+            icon.contentTintColor = isCurrent ? .controlAccentColor : .secondaryLabelColor
+            icon.translatesAutoresizingMaskIntoConstraints = false
+            cell.addSubview(icon)
             let name = NSTextField(labelWithString: item.name)
-            name.font = .systemFont(ofSize: 13)
+            name.font = .systemFont(ofSize: 13, weight: isCurrent ? .semibold : .regular)
             name.lineBreakMode = .byTruncatingTail
             let dir = NSTextField(labelWithString: item.dir)
             dir.font = .systemFont(ofSize: 11)
@@ -202,7 +221,10 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
             cell.addSubview(st); cell.textField = name
             cell.toolTip = item.path
             NSLayoutConstraint.activate([
-                st.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
+                icon.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
+                icon.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                icon.widthAnchor.constraint(equalToConstant: 18),
+                st.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6),
                 st.trailingAnchor.constraint(lessThanOrEqualTo: cell.trailingAnchor, constant: -4),
                 st.centerYAnchor.constraint(equalTo: cell.centerYAnchor)])
             return cell
@@ -226,4 +248,5 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     }
 
     @objc private func installSkill(_ s: Any?) { onInstallSkill?() }
+    @objc private func clearRecents(_ s: Any?) { onClearRecent?() }
 }

@@ -52,7 +52,9 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
         split.addSplitViewItem(main)
         side.isCollapsed = false
         split.splitView.autosaveName = "mdv.sidebar.2"
-        w.contentViewController = split
+        w.contentViewController = split          // this resizes the window to the split view's own size…
+        w.setContentSize(size)                  // …so put our size back and center again
+        w.center()
         if sidebar.view.frame.width < 200 { split.splitView.setPosition(240, ofDividerAt: 0) }
 
         w.registerForDraggedTypes([.fileURL])

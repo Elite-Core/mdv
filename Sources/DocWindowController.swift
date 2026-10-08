@@ -23,7 +23,7 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
     private var doc: MarkdownDocument? { document as? MarkdownDocument }
 
     convenience init(home: Bool) {
-        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1040, height: 800),
+        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1000, height: 680),   // about the size Notes opens at
                          styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                          backing: .buffered, defer: false)
         self.init(window: w)
@@ -50,7 +50,7 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
         side.isCollapsed = false
         split.splitView.autosaveName = "mdv.sidebar"
         w.contentViewController = split
-        if sidebar.view.frame.width < 200 { split.splitView.setPosition(240, ofDividerAt: 0) }
+        if sidebar.view.frame.width < 200 { split.splitView.setPosition(220, ofDividerAt: 0) }
 
         w.registerForDraggedTypes([.fileURL])
 

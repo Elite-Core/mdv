@@ -1,0 +1,9 @@
+#!/bin/sh
+# mdv <file.md> [more.md ...]   open in the mdv app (/Applications/mdv.app)
+# mdv --install-skill           install the Claude Code skill for this user
+# mdv --pane <file.md>          print a URL for the browser-pane server instead
+case "$1" in
+  --install-skill) exec /Applications/mdv.app/Contents/MacOS/mdv --install-skill ;;
+  --pane) shift; exec node "$(dirname "$0")/mdv.mjs" "$@" ;;
+esac
+exec open -a /Applications/mdv.app "$@"

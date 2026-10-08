@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NSApp.mainMenu = buildMenu()
     }
     func applicationDidFinishLaunching(_ n: Notification) {
+        NSLog("[mdv] didFinishLaunching docs=%d", NSDocumentController.shared.documents.count)
         NSApp.activate(ignoringOtherApps: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { self.offerSkillIfNeeded() }
         DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { Updater.shared.checkInBackground() }
@@ -91,6 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { true }
     func applicationOpenUntitledFile(_ sender: NSApplication) -> Bool {
+        NSLog("[mdv] openUntitledFile")
         DocWindowController.home.show()
         return true
     }

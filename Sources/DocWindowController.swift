@@ -42,12 +42,13 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
     private var statusTimer: Timer?
     private var doc: MarkdownDocument? { document as? MarkdownDocument }
 
-    convenience init(home: Bool = false) {
+    convenience init(home: Bool) {
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1040, height: 800),
                          styleMask: [.titled, .closable, .miniaturizable, .resizable],
                          backing: .buffered, defer: false)
         self.init(window: w)
         isHome = home
+        NSLog("[mdv] DocWindowController init home=%d", home ? 1 : 0)
         w.delegate = self
         w.minSize = NSSize(width: 520, height: 360)
         w.toolbarStyle = .unified
@@ -97,12 +98,13 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
     // MARK: - Home
 
     func show() {
+        NSLog("[mdv] home.show")
         if loaded { renderHome() }
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
-    func hide() { window?.orderOut(nil) }
+    func hide() { NSLog("[mdv] home.hide"); window?.orderOut(nil) }
 
     private func renderHome() {
         guard loaded, isHome else { return }
@@ -129,6 +131,7 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
     // MARK: - Rendering
 
     func render(changed: Bool = false) {
+        NSLog("[mdv] render loaded=%d doc=%d winVisible=%d", loaded ? 1 : 0, doc == nil ? 0 : 1, (window?.isVisible ?? false) ? 1 : 0)
         guard loaded, let d = doc, let u = d.fileURL else { return }
         var payload: [String: Any] = [
             "name": u.lastPathComponent,
@@ -185,6 +188,7 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         loaded = true
+        NSLog("[mdv] web loaded home=%d visible=%d", isHome ? 1 : 0, (window?.isVisible ?? false) ? 1 : 0)
         if isHome { renderHome() } else { render() }
     }
 

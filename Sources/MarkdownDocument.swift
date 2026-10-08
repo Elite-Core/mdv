@@ -10,6 +10,7 @@ final class MarkdownDocument: NSDocument {
     override var isDocumentEdited: Bool { false }
 
     override func read(from url: URL, ofType typeName: String) throws {
+        NSLog("[mdv] read %@", url.path)
         let data = try Data(contentsOf: url)
         text = String(decoding: data, as: UTF8.self)
         mtime = MarkdownDocument.modDate(url) ?? Date()
@@ -20,8 +21,10 @@ final class MarkdownDocument: NSDocument {
     }
 
     override func makeWindowControllers() {
-        addWindowController(DocWindowController())
+        NSLog("[mdv] makeWindowControllers %@", fileURL?.lastPathComponent ?? "?")
+        addWindowController(DocWindowController(home: false))
         DocWindowController.home.hide()
+        NSLog("[mdv] window controllers: %d, home hidden", windowControllers.count)
         watch = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in self?.checkForChanges() }
     }
 
@@ -38,6 +41,7 @@ final class MarkdownDocument: NSDocument {
 
     override func close() {
         watch?.invalidate(); watch = nil
+        NSLog("[mdv] close %@ (docs left: %d)", fileURL?.lastPathComponent ?? "?", NSDocumentController.shared.documents.count - 1)
         super.close()
         if !AppDelegate.quitting && NSDocumentController.shared.documents.isEmpty { DocWindowController.home.show() }
     }

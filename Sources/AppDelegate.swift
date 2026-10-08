@@ -153,6 +153,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         _ = add("Edit") { m in
             mi(m, "Copy", #selector(NSText.copy(_:)), "c")
+            mi(m, "Copy Markdown", #selector(DocWindowController.copyMarkdown(_:)), "c", [.command, .shift])
             mi(m, "Select All", #selector(NSText.selectAll(_:)), "a")
             m.addItem(.separator())
             mi(m, "Find…", #selector(DocWindowController.focusFind(_:)), "f")

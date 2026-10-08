@@ -24,9 +24,11 @@ final class WeakScriptHandler: NSObject, WKScriptMessageHandler {
     func userContentController(_ u: WKUserContentController, didReceive m: WKScriptMessage) { target?.userContentController(u, didReceive: m) }
 }
 
-final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate, WKNavigationDelegate, WKScriptMessageHandler {
+final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbarDelegate, NSToolbarItemValidation, WKNavigationDelegate, WKScriptMessageHandler {
     private enum ID {
         static let sidebar = NSToolbarItem.Identifier("mdv.sidebar")
+        static let open = NSToolbarItem.Identifier("mdv.open")
+        static let copy = NSToolbarItem.Identifier("mdv.copy")
         static let status = NSToolbarItem.Identifier("mdv.status")
         static let appearance = NSToolbarItem.Identifier("mdv.appearance")
     }
@@ -53,6 +55,7 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
         w.minSize = NSSize(width: 520, height: 360)
         w.toolbarStyle = .unified
         w.tabbingMode = home ? .disallowed : .preferred
+        w.isRestorable = false          // launch always lands on Home, never on last session's windows
         if home { w.title = "mdv"; w.isReleasedWhenClosed = false }
         w.center()
         shouldCascadeWindows = true
@@ -234,13 +237,15 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
     // MARK: - Toolbar
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, ID.status, .space, ID.sidebar, ID.appearance]
+        [.flexibleSpace, ID.status, .space, ID.open, ID.copy, .space, ID.sidebar, ID.appearance]
     }
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { toolbarDefaultItemIdentifiers(toolbar) }
 
     func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
         switch id {
         case ID.sidebar: return symbolItem(id, "sidebar.left", "Toggle Sidebar", #selector(toggleOutline(_:)))
+        case ID.open: return symbolItem(id, "folder", "Open File", #selector(openFile(_:)))
+        case ID.copy: return symbolItem(id, "doc.on.doc", "Copy Markdown", #selector(copyMarkdown(_:)))
         case ID.appearance: return symbolItem(id, "circle.lefthalf.filled", "Light / Dark", #selector(toggleAppearance(_:)))
         case ID.status:
             let item = NSToolbarItem(itemIdentifier: id)
@@ -260,7 +265,22 @@ final class DocWindowController: NSWindowController, NSWindowDelegate, NSToolbar
         return item
     }
 
+    func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
+        item.itemIdentifier == ID.copy ? doc != nil : true
+    }
+
     // MARK: - Actions
+
+    @objc func openFile(_ s: Any?) { NSDocumentController.shared.openDocument(nil) }
+
+    @objc func copyMarkdown(_ s: Any?) {
+        guard let d = doc else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(d.text, forType: .string)
+        statusLabel.stringValue = "Copied"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { [weak self] in self?.updateStatus() }
+    }
 
     @objc func toggleOutline(_ s: Any?) { web.evaluateJavaScript("mdv.toggleSidebar()", completionHandler: nil) }
 

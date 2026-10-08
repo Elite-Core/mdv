@@ -12,7 +12,7 @@ git rev-parse "v$VER" >/dev/null 2>&1 && { echo "tag v$VER already exists"; exit
 
 BUILD=$(( $(cat build-number 2>/dev/null || echo 0) + 1 ))
 echo "$BUILD" > build-number
-./build.sh --dist --version "$VER" --build "$BUILD"
+./build.sh --dist --no-install --version "$VER" --build "$BUILD"
 
 python3 - "$VER" "$BUILD" "$RELEASES_REPO" "$NOTES" > build/latest.json <<'PY'
 import json, sys
